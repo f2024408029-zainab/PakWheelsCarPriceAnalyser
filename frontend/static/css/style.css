@@ -1,0 +1,216 @@
+
+:root {
+    --primary-color: #004a9f;    /* PakWheels Blue */
+    --secondary-color: #28a745;  /* Success Green */
+    --accent-color: #ff5a5f;     /* Scrape Red/Coral */
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --text-muted: #666666;
+    --border-color: #e1e4e8;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    padding: 20px;
+}
+
+/* Container Layout */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Main Header */
+header {
+    background: var(--primary-color);
+    color: white;
+    padding: 20px 30px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+/* Reusable Buttons */
+.btn {
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(255, 90, 95, 0.3);
+}
+
+.btn:hover {
+    background: #e0484d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(255, 90, 95, 0.4);
+}
+
+.btn:disabled {
+    background: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.btn-secondary {
+    background: var(--secondary-color);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+.btn-secondary:hover {
+    background: #218838;
+    box-shadow: 0 4px 10px rgba(40, 167, 69, 0.4);
+}
+
+/* Responsive Grid Dashboard */
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1.8fr;
+    gap: 25px;
+}
+
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Cards Design */
+.card {
+    background: var(--card-bg);
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    margin-bottom: 25px;
+    border: 1px solid var(--border-color);
+}
+
+.card h3 {
+    font-size: 1.3rem;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--bg-color);
+    padding-bottom: 8px;
+}
+
+/* Input & Form Styling */
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccd1d9;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background-color: #fafbfc;
+    transition: border-color 0.2s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background-color: #ffffff;
+}
+
+/* Dynamic Car Feed List */
+.car-list {
+    max-height: 650px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Scrollbar customization for the feed */
+.car-list::-webkit-scrollbar {
+    width: 6px;
+}
+.car-list::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
+.car-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+
+.car-item {
+    border-left: 5px solid var(--primary-color);
+    background: #f8f9fa;
+    padding: 18px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-top: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.car-item:hover {
+    transform: translateX(3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Badges and Price tags */
+.badge {
+    background: #e9ecef;
+    color: #495057;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.price {
+    color: var(--secondary-color);
+    font-weight: 700;
+    font-size: 1.25rem;
+    white-space: nowrap;
+}
+
+/* Evaluation Response Box */
+.evaluation-box {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-align: center;
+    font-size: 0.95rem;
+    border: 1px solid transparent;
+    display: none;
+    white-space: pre-line;
+}
