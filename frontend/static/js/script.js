@@ -1,10 +1,9 @@
 const API_BASE = "http://127.0.0.1:5000/api";
 let livePollInterval = null;
 
-// Function to trigger background live scraper instantly
 function triggerScrape() {
     const btn = document.getElementById("btnScrape");
-    btn.innerText = "⏳ Scraping & Syncing...";
+    btn.innerText = "⏳ Synchronizing System Feeds...";
     btn.disabled = true;
 
     fetch(`${API_BASE}/scrape`, {
@@ -15,21 +14,18 @@ function triggerScrape() {
     .then(res => res.json())
     .then(data => {
         alert(data.message);
-        
-        // A+ GRADE IMPROVEMENT: Dynamic Live Polling
-        // Pulls data every 2.5 seconds dynamically so user sees listings pop up live
         let pollCount = 0;
-        loadCars(); // instant first pull
+        loadCars();
         
         livePollInterval = setInterval(() => {
             loadCars();
             pollCount++;
-            if (pollCount >= 8) { // Stop polling after 20 seconds (3 pages done)
+            if (pollCount >= 6) {
                 clearInterval(livePollInterval);
                 btn.innerText = "⚡ Scrape Live Data";
                 btn.disabled = false;
             }
-        }, 2500);
+        }, 2000);
     })
     .catch(err => {
         console.error(err);
@@ -38,10 +34,12 @@ function triggerScrape() {
     });
 }
 
-// Function to pull real-time results with selected filters
 function loadCars() {
     const province = document.getElementById("filterProvince").value;
     const trans = document.getElementById("filterTrans").value;
+    
+    // UI Metric text updater
+    document.getElementById("activeFilters").innerText = province ? `${province} Only` : "All Regions";
 
     let url = `${API_BASE}/cars?`;
     if (province) url += `province=${province}&`;
@@ -55,7 +53,7 @@ function loadCars() {
             const container = document.getElementById("carContainer");
             
             if (resData.data.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: #888; padding: 40px;">No matched data found. Click Scrape Live Data!</p>';
+                container.innerHTML = '<div class="empty-state"><p>No matched data found for this region selection.</p><small>Click Scrape Live Data to populate dynamic profiles!</small></div>';
                 return;
             }
 
@@ -64,28 +62,26 @@ function loadCars() {
                 const item = document.createElement("div");
                 item.className = "car-item";
                 item.innerHTML = `
-                    <div>
-                        <strong style="font-size: 1.1em;">${car.title}</strong>
-                        <div style="margin-top: 5px; color: #666;">
-                            <span class="badge" style="background:#004a9f; color:white;">${car.province}</span> | 
-                            <span class="badge">${car.transmission}</span> | 
-                            <span class="badge">${car.engine_capacity}</span> | 
-                            <span class="badge">${car.mileage.toLocaleString()} KM</span>
+                    <div class="details-block">
+                        <h4>${car.title}</h4>
+                        <div class="badge-row">
+                            <span class="badge badge-province">📍 ${car.province} (${car.city})</span>
+                            <span class="badge">⚙️ ${car.transmission}</span>
+                            <span class="badge">🚗 ${car.year}</span>
+                            <span class="badge">🛣️ ${car.mileage.toLocaleString()} KM</span>
                         </div>
-                        <small style="color: #999;">Synced at: ${car.scraped_at}</small>
                     </div>
                     <div>
-                        <span class="price">PKR ${(car.price / 100000).toFixed(1)} Lac</span>
+                        <div class="price-tag">PKR ${(car.price / 100000).toFixed(1)} Lac</div>
                     </div>
                 `;
                 container.appendChild(item);
             });
         }
     })
-    .catch(err => console.error("Error fetching rows:", err));
+    .catch(err => console.error("Error running feed fetch:", err));
 }
 
-// Function to handle predictive pricing inputs
 function evaluateDeal() {
     const make = document.getElementById("evalMake").value;
     const model = document.getElementById("evalModel").value;
@@ -94,15 +90,15 @@ function evaluateDeal() {
     const transmission = document.getElementById("evalTrans").value;
 
     if (!make || !model || !year || !price) {
-        alert("Please fill out all predictive fields!");
+        alert("Please key in all valuation vectors!");
         return;
     }
 
     const resultBox = document.getElementById("evaluationResult");
     resultBox.style.display = "block";
-    resultBox.style.backgroundColor = "#e9ecef";
-    resultBox.style.color = "#333";
-    resultBox.innerText = "Analyzing live trends & market deviations...";
+    resultBox.style.background = "#cbd5e1";
+    resultBox.style.color = "#0f172a";
+    resultBox.innerText = "Processing market indicators...";
 
     fetch(`${API_BASE}/evaluate`, {
         method: "POST",
@@ -113,27 +109,25 @@ function evaluateDeal() {
     .then(data => {
         if (data.status === "success") {
             const evalData = data.evaluation;
-            
             if(evalData.market_average) {
-                resultBox.innerText = `${evalData.status} \n(Market Avg for ${year}: PKR ${(evalData.market_average / 100000).toFixed(1)} Lac across ${evalData.total_listings_compared} reference points)`;
+                resultBox.innerText = `${evalData.status}\n(Market Benchmark: PKR ${(evalData.market_average / 100000).toFixed(1)} Lac across ${evalData.total_listings_compared} reference logs)`;
                 
                 if (evalData.status.includes("Great")) {
-                    resultBox.style.backgroundColor = "#d4edda"; resultBox.style.color = "#155724";
+                    resultBox.style.background = "#d1fae5"; resultBox.style.color = "#065f46"; resultBox.style.borderColor = "#10b981";
                 } else if (evalData.status.includes("Overpriced")) {
-                    resultBox.style.backgroundColor = "#f8d7da"; resultBox.style.color = "#721c24";
+                    resultBox.style.background = "#fee2e2"; resultBox.style.color = "#991b1b"; resultBox.style.borderColor = "#ef4444";
                 } else {
-                    resultBox.style.backgroundColor = "#fff3cd"; resultBox.style.color = "#856404";
+                    resultBox.style.background = "#fef3c7"; resultBox.style.color = "#92400e"; resultBox.style.borderColor = "#f59e0b";
                 }
             } else {
-                // Fallback rendering
                 resultBox.innerText = evalData.status;
-                resultBox.style.backgroundColor = "#fff3cd"; resultBox.style.color = "#856404";
+                resultBox.style.background = "#fef3c7"; resultBox.style.color = "#92400e";
             }
         }
     })
     .catch(err => {
         console.error(err);
-        resultBox.innerText = "Error analyzing deal data.";
+        resultBox.innerText = "Error completing diagnostic parsing execution.";
     });
 }
 

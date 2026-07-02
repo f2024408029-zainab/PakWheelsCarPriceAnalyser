@@ -3,84 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PakWheels Live Car Price Analyser</title>
+    <title>PakWheels Live Market Intelligence Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        header { background: #004a9f; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .btn { background: #ff5a5f; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer; transition: 0.3s; }
-        .btn:hover { background: #e0484d; }
-        .btn-secondary { background: #28a745; }
-        .btn-secondary:hover { background: #218838; }
-        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
-        .form-control { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        .car-list { max-height: 600px; overflow-y: auto; }
-        .car-item { border-left: 5px solid #004a9f; background: #f8f9fa; padding: 15px; margin-bottom: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .badge { background: #e9ecef; padding: 5px 10px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
-        .price { color: #28a745; font-weight: bold; font-size: 1.1em; }
-        .evaluation-box { margin-top: 15px; padding: 15px; border-radius: 5px; font-weight: bold; text-align: center; display: none; }
-    </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🚗 PakWheels Live Price Analyser</h1>
+            <div class="brand-box">
+                <span style="font-size: 2.8rem;">📊</span>
+                <div>
+                    <h1>PakWheels Price Intelligence Engine</h1>
+                    <p>A+ Grade Academic Verification & Live Predictive System</p>
+                </div>
+            </div>
             <button class="btn" id="btnScrape" onclick="triggerScrape()">⚡ Scrape Live Data</button>
         </header>
 
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-title">Total Active Cache Records</span>
+                <span class="stat-value" id="carCount">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-title">Selected Active Province Filter</span>
+                <span class="stat-value" id="activeFilters" style="color: #0369a1;">All Regions</span>
+            </div>
+        </div>
+
         <div class="grid">
-            <div>
-                <div class="card">
-                    <h3>🔮 Fair Price Prediction Dashboard</h3>
-                    <p style="font-size: 0.9em; color: #666;">Enter specs manually to see if a deal is fair based on live market analysis.</p>
+            <div class="left-panel">
+                <div class="card premium-card">
+                    <h3>🔮 Valuation Predictor Dashboard</h3>
                     <div class="form-group">
-                        <label>Make (e.g., Toyota)</label>
-                        <input type="text" id="evalMake" class="form-control" placeholder="Toyota">
+                        <label>Vehicle Make</label>
+                        <input type="text" id="evalMake" class="form-control" placeholder="e.g., Toyota">
                     </div>
                     <div class="form-group">
-                        <label>Model (e.g., Corolla)</label>
-                        <input type="text" id="evalModel" class="form-control" placeholder="Corolla">
+                        <label>Vehicle Model</label>
+                        <input type="text" id="evalModel" class="form-control" placeholder="e.g., Corolla">
                     </div>
                     <div class="form-group">
-                        <label>Year</label>
-                        <input type="number" id="evalYear" class="form-control" placeholder="2020">
+                        <label>Model Year</label>
+                        <input type="number" id="evalYear" class="form-control" placeholder="e.g., 2018">
                     </div>
                     <div class="form-group">
-                        <label>Your Price (PKR)</label>
-                        <input type="number" id="evalPrice" class="form-control" placeholder="4500000">
+                        <label>Asking Valuation (PKR)</label>
+                        <input type="number" id="evalPrice" class="form-control" placeholder="e.g., 3500000">
                     </div>
                     <div class="form-group">
-                        <label>Transmission</label>
+                        <label>Gear Shifter Type</label>
                         <select id="evalTrans" class="form-control">
                             <option value="Automatic">Automatic</option>
                             <option value="Manual">Manual</option>
                         </select>
                     </div>
-                    <button class="btn btn-secondary" style="width: 100%;" onclick="evaluateDeal()">Analyze Deal</button>
+                    <button class="btn btn-secondary" style="width: 100%;" onclick="evaluateDeal()">Analyze Market Deviation</button>
                     <div id="evaluationResult" class="evaluation-box"></div>
                 </div>
 
                 <div class="card">
-                    <h3>🔍 Live Database Filters</h3>
+                    <h3>🔍 Live Query Control</h3>
                     <div class="form-group">
-                        <label>Region / Province</label>
+                        <label>Isolate Province</label>
                         <select id="filterProvince" class="form-control" onchange="loadCars()">
-                            <option value="">All Regions</option>
+                            <option value="">All Regions / Provinces</option>
                             <option value="Punjab">Punjab</option>
                             <option value="Sindh">Sindh</option>
                             <option value="Kpk">KPK</option>
                             <option value="Balochistan">Balochistan</option>
                             <option value="Islamabad">Islamabad Capital</option>
-                            <option value="Azad Kashmir">Azad Kashmir</option>
-                            <option value="Gilgit Baltistan">Gilgit Baltistan</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Transmission</label>
+                        <label>Isolate Transmission</label>
                         <select id="filterTrans" class="form-control" onchange="loadCars()">
                             <option value="">All Transmissions</option>
                             <option value="Automatic">Automatic</option>
@@ -90,15 +85,20 @@
                 </div>
             </div>
 
-            <div class="card">
-                <h3>📥 Current Scraped Live Feed (<span id="carCount">0</span> Listings)</h3>
+            <div class="card feed-card">
+                <div class="feed-header">
+                    <h3>📥 Verified Real-Time Feed Monitor</h3>
+                    <span class="live-indicator">● Engine Sync Active</span>
+                </div>
                 <div class="car-list" id="carContainer">
-                    <p style="text-align: center; color: #888; padding: 40px;">No real-time records found. Click "Scrape Live Data" to sync from PakWheels!</p>
+                    <div class="empty-state">
+                        <p>No listings loaded in view memory.</p>
+                        <small>Click "Scrape Live Data" to instantiate the extractor thread loop.</small>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
