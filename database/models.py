@@ -28,7 +28,7 @@ class Car(Base):
 
 def init_db():
     """Creates tables if they don't exist without destroying data"""
-    Base.metadata.create_base(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 def get_filtered_cars(session, filters):
     """
