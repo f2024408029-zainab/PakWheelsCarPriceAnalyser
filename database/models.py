@@ -52,33 +52,40 @@ def get_filtered_cars(session, filters):
     return query.order_by(Car.scraped_at.desc()).all()
 
 def evaluate_car_deal(session, make, model, year, user_price, mileage, transmission):
-    """
-    Fair Price Dashboard Algorithm: Calculates avg price for similar live cars 
-    and tells the user if their manual entry is a Good, Fair, or Bad deal.
-    """
+    # Try getting exact make and model match
     similar_cars = session.query(Car).filter(
-        Car.make. some_match_logic == make, # Handled in API via lowercase/like
+        Car.make.ilike(f"%{make}%"),
         Car.model.ilike(f"%{model}%"),
-        Car.year == int(year),
-        Car.transmission == transmission
+        Car.year == int(year)
     ).all()
     
+    # Intelligent Fallback: If no exact model found, check general 'Make' value for that year
+    is_fallback = False
     if not similar_cars:
-        return {"status": "No live data available for this specific model yet. Keep scraping!"}
+        similar_cars = session.query(Car).filter(
+            Car.make.ilike(f"%{make}%"),
+            Car.year == int(year)
+        ).all()
+        is_fallback = True
+        
+    if not similar_cars:
+        return {"status": "Insufficient live market data for this vehicle group yet. Please click 'Scrape Live Data' to enrich the analytical engine!"}
         
     total_price = sum(car.price for car in similar_cars)
     avg_price = total_price / len(similar_cars)
     
-    # Simple evaluation logic
     price_diff = user_price - avg_price
     percent_diff = (price_diff / avg_price) * 100
     
-    if percent_diff < -5:
-        deal = "Great Deal! Price is lower than market average."
-    elif percent_diff > 5:
-        deal = "Overpriced! Higher than current market average."
+    if percent_diff < -6:
+        deal = "Great Deal! Price is notably lower than current market trends."
+    elif percent_diff > 6:
+        deal = "Overpriced! This asking amount is higher than general market velocity."
     else:
-        deal = "Fair Price. Aligns perfectly with live market value."
+        deal = "Fair Valuation. This aligns cleanly with current live observations."
+        
+    if is_fallback:
+        deal = f"⚠️ Brand Trend Estimate: {deal}"
         
     return {
         "market_average": int(avg_price),
