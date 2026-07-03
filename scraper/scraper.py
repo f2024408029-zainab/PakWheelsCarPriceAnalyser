@@ -85,9 +85,16 @@ def scrape_and_store_live(pages=2):
                         val = float(nums[0])
                         clean_price = int(val * 100000) if "lac" in price_str else (int(val * 10000000) if "crore" in price_str else int(val))
 
-                        # City & Province Allocation
+                    # City & Province Allocation
+                        city = "Lahore"
                         city_elem = item.find("ul", class_="search-vehicle-info-2")
-                        city = city_elem.find("li").get_text(strip=True) if city_elem else "Lahore"
+                        if city_elem:
+                            all_known_cities = [c for cities in PROVINCE_MAPPING.values() for c in cities]
+                            for li in city_elem.find_all("li"):
+                                text = li.get_text(strip=True)
+                                if text.lower() in all_known_cities:
+                                    city = text
+                                    break
                         derived_province = determine_province(city)
                         
                         # Specs Extraction
@@ -123,3 +130,6 @@ def scrape_and_store_live(pages=2):
             total_inserted = generate_fail_safe_data(session)
             
     return total_inserted
+if __name__ == "__main__":
+    inserted = scrape_and_store_live(pages=2)
+    print(f"Total cars inserted: {inserted}")
