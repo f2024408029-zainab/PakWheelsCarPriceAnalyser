@@ -1,134 +1,180 @@
-const API_BASE = "http://127.0.0.1:5000/api";
-let livePollInterval = null;
+const API = "/api";
 
-function triggerScrape() {
-    const btn = document.getElementById("btnScrape");
-    btn.innerText = "⏳ Synchronizing System Feeds...";
-    btn.disabled = true;
+const el = {
+  scrapeBtn: document.getElementById("scrapeBtn"),
+  scrapeDot: document.getElementById("scrapeDot"),
+  scrapeStatusText: document.getElementById("scrapeStatusText"),
+  provinceSelect: document.getElementById("provinceSelect"),
+  citySelect: document.getElementById("citySelect"),
+  transmissionSelect: document.getElementById("transmissionSelect"),
+  makeInput: document.getElementById("makeInput"),
+  makeList: document.getElementById("makeList"),
+  modelInput: document.getElementById("modelInput"),
+  modelList: document.getElementById("modelList"),
+  yearMin: document.getElementById("yearMin"),
+  yearMax: document.getElementById("yearMax"),
+  priceMin: document.getElementById("priceMin"),
+  priceMax: document.getElementById("priceMax"),
+  applyFilters: document.getElementById("applyFilters"),
+  resetFilters: document.getElementById("resetFilters"),
+  resultsGrid: document.getElementById("resultsGrid"),
+  resultsCount: document.getElementById("resultsCount"),
+  emptyState: document.getElementById("emptyState"),
+  cardTemplate: document.getElementById("cardTemplate"),
+};
 
-    fetch(`${API_BASE}/scrape`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pages: 3 })
-    })
-    .then(res => res.json())
-    .then(data => {
-        alert(data.message);
-        let pollCount = 0;
-        loadCars();
-        
-        livePollInterval = setInterval(() => {
-            loadCars();
-            pollCount++;
-            if (pollCount >= 6) {
-                clearInterval(livePollInterval);
-                btn.innerText = "⚡ Scrape Live Data";
-                btn.disabled = false;
-            }
-        }, 2000);
-    })
-    .catch(err => {
-        console.error(err);
-        btn.innerText = "⚡ Scrape Live Data";
-        btn.disabled = false;
-    });
+let pollTimer = null;
+
+function formatPKR(value) {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("en-PK").format(Math.round(value));
 }
 
-function loadCars() {
-    const province = document.getElementById("filterProvince").value;
-    const trans = document.getElementById("filterTrans").value;
-    
-    // UI Metric text updater
-    document.getElementById("activeFilters").innerText = province ? `${province} Only` : "All Regions";
+async function loadFilters() {
+  const res = await fetch(`${API}/filters`);
+  const data = await res.json();
 
-    let url = `${API_BASE}/cars?`;
-    if (province) url += `province=${province}&`;
-    if (trans) url += `transmission=${trans}&`;
-
-    fetch(url)
-    .then(res => res.json())
-    .then(resData => {
-        if (resData.status === "success") {
-            document.getElementById("carCount").innerText = resData.count;
-            const container = document.getElementById("carContainer");
-            
-            if (resData.data.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>No matched data found for this region selection.</p><small>Click Scrape Live Data to populate dynamic profiles!</small></div>';
-                return;
-            }
-
-            container.innerHTML = "";
-            resData.data.forEach(car => {
-                const item = document.createElement("div");
-                item.className = "car-item";
-                item.innerHTML = `
-                    <div class="details-block">
-                        <h4>${car.title}</h4>
-                        <div class="badge-row">
-                            <span class="badge badge-province">📍 ${car.province} (${car.city})</span>
-                            <span class="badge">⚙️ ${car.transmission}</span>
-                            <span class="badge">🚗 ${car.year}</span>
-                            <span class="badge">🛣️ ${car.mileage.toLocaleString()} KM</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="price-tag">PKR ${(car.price / 100000).toFixed(1)} Lac</div>
-                    </div>
-                `;
-                container.appendChild(item);
-            });
-        }
-    })
-    .catch(err => console.error("Error running feed fetch:", err));
+  fillSelect(el.provinceSelect, data.provinces);
+  fillSelect(el.citySelect, data.cities);
+  fillDatalist(el.makeList, data.makes);
+  fillDatalist(el.modelList, data.models);
 }
 
-function evaluateDeal() {
-    const make = document.getElementById("evalMake").value;
-    const model = document.getElementById("evalModel").value;
-    const year = document.getElementById("evalYear").value;
-    const price = document.getElementById("evalPrice").value;
-    const transmission = document.getElementById("evalTrans").value;
-
-    if (!make || !model || !year || !price) {
-        alert("Please key in all valuation vectors!");
-        return;
-    }
-
-    const resultBox = document.getElementById("evaluationResult");
-    resultBox.style.display = "block";
-    resultBox.style.background = "#cbd5e1";
-    resultBox.style.color = "#0f172a";
-    resultBox.innerText = "Processing market indicators...";
-
-    fetch(`${API_BASE}/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ make, model, year, price, transmission })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            const evalData = data.evaluation;
-            if(evalData.market_average) {
-                resultBox.innerText = `${evalData.status}\n(Market Benchmark: PKR ${(evalData.market_average / 100000).toFixed(1)} Lac across ${evalData.total_listings_compared} reference logs)`;
-                
-                if (evalData.status.includes("Great")) {
-                    resultBox.style.background = "#d1fae5"; resultBox.style.color = "#065f46"; resultBox.style.borderColor = "#10b981";
-                } else if (evalData.status.includes("Overpriced")) {
-                    resultBox.style.background = "#fee2e2"; resultBox.style.color = "#991b1b"; resultBox.style.borderColor = "#ef4444";
-                } else {
-                    resultBox.style.background = "#fef3c7"; resultBox.style.color = "#92400e"; resultBox.style.borderColor = "#f59e0b";
-                }
-            } else {
-                resultBox.innerText = evalData.status;
-                resultBox.style.background = "#fef3c7"; resultBox.style.color = "#92400e";
-            }
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        resultBox.innerText = "Error completing diagnostic parsing execution.";
-    });
+function fillSelect(selectEl, values) {
+  const current = selectEl.value;
+  [...selectEl.querySelectorAll("option[data-dynamic]")].forEach((o) => o.remove());
+  values.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    opt.dataset.dynamic = "1";
+    selectEl.appendChild(opt);
+  });
+  if (values.includes(current)) selectEl.value = current;
 }
 
-window.onload = loadCars;
+function fillDatalist(datalistEl, values) {
+  datalistEl.innerHTML = "";
+  values.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    datalistEl.appendChild(opt);
+  });
+}
+
+function buildQuery() {
+  const params = new URLSearchParams();
+  const add = (key, value) => { if (value) params.set(key, value); };
+
+  add("province", el.provinceSelect.value);
+  add("city", el.citySelect.value);
+  add("transmission", el.transmissionSelect.value);
+  add("make", el.makeInput.value.trim());
+  add("model", el.modelInput.value.trim());
+  add("year_min", el.yearMin.value);
+  add("year_max", el.yearMax.value);
+  add("price_min", el.priceMin.value);
+  add("price_max", el.priceMax.value);
+
+  return params.toString();
+}
+
+async function loadCars() {
+  const query = buildQuery();
+  const res = await fetch(`${API}/cars?${query}`);
+  const data = await res.json();
+  renderCars(data.results);
+  el.resultsCount.textContent = `${data.count} listing${data.count === 1 ? "" : "s"}`;
+}
+
+function renderCars(cars) {
+  el.resultsGrid.innerHTML = "";
+
+  if (!cars.length) {
+    el.emptyState.classList.add("visible");
+    return;
+  }
+  el.emptyState.classList.remove("visible");
+
+  cars.forEach((car) => {
+    const node = el.cardTemplate.content.cloneNode(true);
+
+    const img = node.querySelector(".car-image img");
+    img.src = car.image_url || "";
+    img.alt = car.title || "Car listing";
+    if (!car.image_url) node.querySelector(".car-image").style.opacity = "0.3";
+
+    node.querySelector(".car-title").textContent = car.title || "Untitled listing";
+    node.querySelector(".odometer-value").textContent = formatPKR(car.price);
+
+    node.querySelector(".chip-year").textContent = car.year || "";
+    node.querySelector(".chip-mileage").textContent = car.mileage ? `${formatPKR(car.mileage)} km` : "";
+    node.querySelector(".chip-fuel").textContent = car.fuel_type || "";
+    node.querySelector(".chip-transmission").textContent = car.transmission || "";
+
+    node.querySelector(".car-city").textContent = car.registration_city || "";
+    const link = node.querySelector(".car-link");
+    link.href = car.listing_url || "#";
+
+    el.resultsGrid.appendChild(node);
+  });
+}
+
+function setScrapeUI(state) {
+  el.scrapeDot.classList.remove("running", "done", "error");
+  if (state.running) {
+    el.scrapeDot.classList.add("running");
+    el.scrapeStatusText.textContent = "scraping…";
+    el.scrapeBtn.disabled = true;
+  } else if (state.error) {
+    el.scrapeDot.classList.add("error");
+    el.scrapeStatusText.textContent = "error";
+    el.scrapeBtn.disabled = false;
+  } else if (state.last_result) {
+    el.scrapeDot.classList.add("done");
+    const r = state.last_result;
+    el.scrapeStatusText.textContent = `done · ${r.saved} saved`;
+    el.scrapeBtn.disabled = false;
+  } else {
+    el.scrapeStatusText.textContent = "idle";
+    el.scrapeBtn.disabled = false;
+  }
+}
+
+async function pollScrapeStatus() {
+  const res = await fetch(`${API}/scrape/status`);
+  const state = await res.json();
+  setScrapeUI(state);
+
+  if (state.running) {
+    pollTimer = setTimeout(pollScrapeStatus, 1500);
+  } else {
+    clearTimeout(pollTimer);
+    await loadFilters();
+    await loadCars();
+  }
+}
+
+el.scrapeBtn.addEventListener("click", async () => {
+  const res = await fetch(`${API}/scrape`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max: 200 }),
+  });
+  if (res.status === 409) return; // already running
+  pollScrapeStatus();
+});
+
+el.applyFilters.addEventListener("click", loadCars);
+
+el.resetFilters.addEventListener("click", () => {
+  [el.provinceSelect, el.citySelect, el.transmissionSelect].forEach((s) => (s.value = ""));
+  [el.makeInput, el.modelInput, el.yearMin, el.yearMax, el.priceMin, el.priceMax].forEach((i) => (i.value = ""));
+  loadCars();
+});
+
+(async function init() {
+  await loadFilters();
+  await loadCars();
+  pollScrapeStatus();
+})();

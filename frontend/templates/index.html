@@ -1,104 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PakWheels Live Market Intelligence Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PakWheels Car Price Analyser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="brand-box">
-                <span style="font-size: 2.8rem;">📊</span>
-                <div>
-                    <h1>PakWheels Price Intelligence Engine</h1>
-                    <p>A+ Grade Academic Verification & Live Predictive System</p>
-                </div>
-            </div>
-            <button class="btn" id="btnScrape" onclick="triggerScrape()">⚡ Scrape Live Data</button>
-        </header>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <span class="stat-title">Total Active Cache Records</span>
-                <span class="stat-value" id="carCount">0</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-title">Selected Active Province Filter</span>
-                <span class="stat-value" id="activeFilters" style="color: #0369a1;">All Regions</span>
-            </div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">PW</span>
+        <div class="brand-text">
+          <h1>Car Price Analyser</h1>
+          <p>Live listings, pulled straight off PakWheels</p>
         </div>
-
-        <div class="grid">
-            <div class="left-panel">
-                <div class="card premium-card">
-                    <h3>🔮 Valuation Predictor Dashboard</h3>
-                    <div class="form-group">
-                        <label>Vehicle Make</label>
-                        <input type="text" id="evalMake" class="form-control" placeholder="e.g., Toyota">
-                    </div>
-                    <div class="form-group">
-                        <label>Vehicle Model</label>
-                        <input type="text" id="evalModel" class="form-control" placeholder="e.g., Corolla">
-                    </div>
-                    <div class="form-group">
-                        <label>Model Year</label>
-                        <input type="number" id="evalYear" class="form-control" placeholder="e.g., 2018">
-                    </div>
-                    <div class="form-group">
-                        <label>Asking Valuation (PKR)</label>
-                        <input type="number" id="evalPrice" class="form-control" placeholder="e.g., 3500000">
-                    </div>
-                    <div class="form-group">
-                        <label>Gear Shifter Type</label>
-                        <select id="evalTrans" class="form-control">
-                            <option value="Automatic">Automatic</option>
-                            <option value="Manual">Manual</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-secondary" style="width: 100%;" onclick="evaluateDeal()">Analyze Market Deviation</button>
-                    <div id="evaluationResult" class="evaluation-box"></div>
-                </div>
-
-                <div class="card">
-                    <h3>🔍 Live Query Control</h3>
-                    <div class="form-group">
-                        <label>Isolate Province</label>
-                        <select id="filterProvince" class="form-control" onchange="loadCars()">
-                            <option value="">All Regions / Provinces</option>
-                            <option value="Punjab">Punjab</option>
-                            <option value="Sindh">Sindh</option>
-                            <option value="Kpk">KPK</option>
-                            <option value="Balochistan">Balochistan</option>
-                            <option value="Islamabad">Islamabad Capital</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Isolate Transmission</label>
-                        <select id="filterTrans" class="form-control" onchange="loadCars()">
-                            <option value="">All Transmissions</option>
-                            <option value="Automatic">Automatic</option>
-                            <option value="Manual">Manual</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card feed-card">
-                <div class="feed-header">
-                    <h3>📥 Verified Real-Time Feed Monitor</h3>
-                    <span class="live-indicator">● Engine Sync Active</span>
-                </div>
-                <div class="car-list" id="carContainer">
-                    <div class="empty-state">
-                        <p>No listings loaded in view memory.</p>
-                        <small>Click "Scrape Live Data" to instantiate the extractor thread loop.</small>
-                    </div>
-                </div>
-            </div>
+      </div>
+      <div class="scrape-control">
+        <div class="scrape-status" id="scrapeStatus">
+          <span class="dot" id="scrapeDot"></span>
+          <span id="scrapeStatusText">idle</span>
         </div>
+        <button id="scrapeBtn" class="btn-primary">Scrape live data</button>
+      </div>
     </div>
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  </header>
+
+  <main class="layout">
+
+    <aside class="filters" id="filters">
+      <h2>Narrow it down</h2>
+
+      <div class="field">
+        <label for="provinceSelect">Province</label>
+        <select id="provinceSelect">
+          <option value="">All provinces</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="citySelect">City</label>
+        <select id="citySelect">
+          <option value="">All cities</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="transmissionSelect">Transmission</label>
+        <select id="transmissionSelect">
+          <option value="">Manual or Automatic</option>
+          <option value="Manual">Manual</option>
+          <option value="Automatic">Automatic</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="makeInput">Make</label>
+        <input list="makeList" id="makeInput" placeholder="e.g. Toyota" />
+        <datalist id="makeList"></datalist>
+      </div>
+
+      <div class="field">
+        <label for="modelInput">Model</label>
+        <input list="modelList" id="modelInput" placeholder="e.g. Corolla" />
+        <datalist id="modelList"></datalist>
+      </div>
+
+      <div class="field field-row">
+        <div>
+          <label for="yearMin">Year from</label>
+          <input type="number" id="yearMin" placeholder="2010" />
+        </div>
+        <div>
+          <label for="yearMax">Year to</label>
+          <input type="number" id="yearMax" placeholder="2026" />
+        </div>
+      </div>
+
+      <div class="field field-row">
+        <div>
+          <label for="priceMin">Price from (PKR)</label>
+          <input type="number" id="priceMin" placeholder="500000" />
+        </div>
+        <div>
+          <label for="priceMax">Price to (PKR)</label>
+          <input type="number" id="priceMax" placeholder="5000000" />
+        </div>
+      </div>
+
+      <button id="applyFilters" class="btn-secondary">Apply filters</button>
+      <button id="resetFilters" class="btn-ghost">Reset</button>
+    </aside>
+
+    <section class="results">
+      <div class="results-header">
+        <h2 id="resultsCount">0 listings</h2>
+        <p class="results-hint">Sorted by most recently scraped</p>
+      </div>
+
+      <div id="resultsGrid" class="grid"></div>
+
+      <div id="emptyState" class="empty-state">
+        <p>No listings yet.</p>
+        <p class="empty-sub">Hit <strong>Scrape live data</strong> above to pull the latest cars from PakWheels.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <template id="cardTemplate">
+    <article class="car-card">
+      <div class="car-image">
+        <img src="" alt="" loading="lazy" />
+      </div>
+      <div class="car-body">
+        <h3 class="car-title"></h3>
+        <div class="odometer" title="Listed price">
+          <span class="odometer-currency">PKR</span>
+          <span class="odometer-value"></span>
+        </div>
+        <div class="chips">
+          <span class="chip chip-year"></span>
+          <span class="chip chip-mileage"></span>
+          <span class="chip chip-fuel"></span>
+          <span class="chip chip-transmission"></span>
+        </div>
+        <div class="car-meta">
+          <span class="car-city"></span>
+          <a class="car-link" href="#" target="_blank" rel="noopener">View on PakWheels →</a>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="script.js"></script>
 </body>
 </html>
