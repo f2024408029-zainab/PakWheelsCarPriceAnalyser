@@ -1,5 +1,3 @@
-flask
-flask-cors
-requests
-beautifulsoup4
-sqlalchemy
+Flask==3.0.3
+SQLAlchemy==2.0.30
+playwright==1.44.0
