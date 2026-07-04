@@ -1,19 +1,3 @@
-"""
-backend/app.py
-----------------
-Flask API + static file server for PakWheelsCarPriceAnalyser.
-
-Run from the project root:
-    python backend/app.py
-
-Endpoints:
-    GET  /api/cars           -> filtered list of scraped cars
-    GET  /api/filters        -> distinct provinces / cities / makes / models for dropdowns
-    POST /api/scrape         -> kicks off a live scrape in a background thread
-    GET  /api/scrape/status  -> poll while a scrape is running
-    GET  /                   -> serves frontend/index.html (and its assets)
-"""
-
 import os
 import sys
 import threading
