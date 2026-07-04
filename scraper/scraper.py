@@ -1,125 +1,295 @@
-import requests
-from bs4 import BeautifulSoup
+import argparse
+import asyncio
+import logging
 import re
 import sys
-import os
-import random
 from datetime import datetime
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.models import engine, Car, init_db
-from sqlalchemy.orm import Session
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
-BASE_URL = "https://www.pakwheels.com/used-cars/search/-/"
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15"
-]
+sys.path.append(".")  # allow running as `python scraper/scraper.py` from project root
+from database.db import init_db, get_session
+from database.models import Car
 
-# Flawless Province Mapping (Covers Balochistan and missing regions)
-PROVINCE_MAPPING = {
-    "Punjab": ["lahore", "faisalabad", "rawalpindi", "multan", "gujranwala", "sialkot", "sargodha", "bahawalpur"],
-    "Sindh": ["karachi", "hyderabad", "sukkur", "larkana"],
-    "Kpk": ["peshawar", "abbottabad", "mardan", "mingora", "kohat"],
-    "Balochistan": ["quetta", "gwadar", "turbat", "khuzdar", "chaman", "sibi"],
-    "Islamabad": ["islamabad"]
+# --------------------------------------------------------------------------- #
+# CONFIG — edit this block if PakWheels changes their markup
+# --------------------------------------------------------------------------- #
+
+BASE_SEARCH_URL = "https://www.pakwheels.com/used-cars/search/-"
+
+SELECTORS = {
+    "card": "li.classified-listing, div.search-listing, div.classified-listing-item",
+    "title": "a.car-name, h3.car-name a, a[itemprop='url']",
+    "price": ".price-details, .generic-green, li.price",
+    "listing_link": "a.car-name, a[itemprop='url']",
+    "image": "img.img-responsive, img[itemprop='image']",
+    # PakWheels shows a "search-vehicle-info" <ul> with li items like
+    # "2019", "45,000 km", "Petrol", "Automatic", "Lahore"
+    "info_list": "ul.search-vehicle-info li, ul.vehicle-detail li",
+    "load_more_button": "a.load-more, button.load-more",
 }
 
-def determine_province(city_str):
-    city_clean = city_str.lower().strip()
-    for province, cities in PROVINCE_MAPPING.items():
-        if city_clean in cities:
-            return province
-    return "Punjab"  # Safe default fallback
+# City -> Province lookup used to populate the "province" filter,
+# since PakWheels only shows the city on the listing card.
+CITY_PROVINCE_MAP = {
+    "lahore": "Punjab", "faisalabad": "Punjab", "rawalpindi": "Punjab",
+    "multan": "Punjab", "gujranwala": "Punjab", "sialkot": "Punjab",
+    "islamabad": "Islamabad Capital Territory",
+    "karachi": "Sindh", "hyderabad": "Sindh", "sukkur": "Sindh",
+    "peshawar": "Khyber Pakhtunkhwa", "abbottabad": "Khyber Pakhtunkhwa",
+    "mardan": "Khyber Pakhtunkhwa", "swat": "Khyber Pakhtunkhwa",
+    "quetta": "Balochistan", "gwadar": "Balochistan",
+}
 
-def generate_fail_safe_data(session):
-    """Guarantees immediate diverse data grid for testing if website firewalls live scrap."""
-    fallback_pool = [
-        ("Toyota Corolla GLi 1.3", "Toyota", "Corolla", 3150000, 2017, "Lahore", "Punjab", 85000, "Manual", "1300 cc"),
-        ("Honda Civic Oriel 1.8", "Honda", "Civic", 4650000, 2018, "Karachi", "Sindh", 62000, "Automatic", "1800 cc"),
-        ("Suzuki Cultus VXL", "Suzuki", "Cultus", 2300000, 2020, "Islamabad", "Islamabad", 41000, "Manual", "1000 cc"),
-        ("Toyota Prado TX 3.0", "Toyota", "Prado", 14500000, 2015, "Quetta", "Balochistan", 120000, "Automatic", "3000 cc"),
-        ("Suzuki Alto VXL", "Suzuki", "Alto", 2600000, 2022, "Quetta", "Balochistan", 18000, "Automatic", "660 cc"),
-        ("Kia Sportage AWD", "Kia", "Sportage", 6500000, 2021, "Peshawar", "Kpk", 35000, "Automatic", "2000 cc")
-    ]
-    inserted = 0
-    for title, make, model, price, year, city, province, mileage, trans, eng in fallback_pool:
-        exists = session.query(Car).filter(Car.title == title, Car.price == price).first()
-        if not exists:
-            car = Car(title=title, make=make, model=model, price=price, year=year, city=city, province=province, mileage=mileage, transmission=trans, engine_capacity=eng, scraped_at=datetime.utcnow())
-            session.add(car)
-            inserted += 1
-    session.commit()
-    return inserted
+MAX_LISTINGS_DEFAULT = 200
+SCROLL_PAUSE_MS = 1200
+NAV_TIMEOUT_MS = 30000
 
-def scrape_and_store_live(pages=2):
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("pakwheels-scraper")
+
+
+# --------------------------------------------------------------------------- #
+# Parsing helpers
+# --------------------------------------------------------------------------- #
+
+def parse_price(raw: str):
+    """'PKR 25.5 lacs' / 'PKR 1.2 crore' -> float rupees."""
+    if not raw:
+        return None
+    raw = raw.lower().replace(",", "").strip()
+    match = re.search(r"([\d.]+)\s*(lac|lacs|lakh|crore)?", raw)
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2)
+    if unit in ("lac", "lacs", "lakh"):
+        value *= 100_000
+    elif unit == "crore":
+        value *= 10_000_000
+    return value
+
+
+def parse_mileage(raw: str):
+    if not raw:
+        return None
+    digits = re.sub(r"[^\d]", "", raw)
+    return int(digits) if digits else None
+
+
+def parse_year(raw: str):
+    match = re.search(r"(19|20)\d{2}", raw or "")
+    return int(match.group(0)) if match else None
+
+
+def parse_engine_cc(raw: str):
+    match = re.search(r"(\d{3,5})\s*cc", (raw or "").lower())
+    return int(match.group(1)) if match else None
+
+
+def guess_make_model(title: str):
+    """Best-effort split of 'Toyota Corolla Altis 2019' -> ('Toyota', 'Corolla')."""
+    if not title:
+        return None, None
+    parts = title.strip().split()
+    make = parts[0] if parts else None
+    model_name = parts[1] if len(parts) > 1 else None
+    return make, model_name
+
+
+def resolve_province(city: str):
+    if not city:
+        return None
+    return CITY_PROVINCE_MAP.get(city.strip().lower())
+
+
+# --------------------------------------------------------------------------- #
+# Core scraping logic
+# --------------------------------------------------------------------------- #
+
+async def autoscroll(page, max_listings: int):
+    """Scroll to the bottom repeatedly so infinite-scroll cards load in,
+    stopping once we have enough listings or the page stops growing."""
+    previous_count = 0
+    stagnant_rounds = 0
+
+    while True:
+        cards = await page.query_selector_all(SELECTORS["card"])
+        count = len(cards)
+        logger.info("Loaded %d listing cards so far...", count)
+
+        if count >= max_listings:
+            break
+        if count == previous_count:
+            stagnant_rounds += 1
+            if stagnant_rounds >= 3:
+                logger.info("No new cards after 3 scrolls — assuming end of results.")
+                break
+        else:
+            stagnant_rounds = 0
+        previous_count = count
+
+        await page.mouse.wheel(0, 4000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=4000)
+        except PlaywrightTimeoutError:
+            pass
+        await page.wait_for_timeout(SCROLL_PAUSE_MS)
+
+
+async def extract_card(card):
+    """Pull structured fields out of a single listing card. Returns dict or None."""
+    try:
+        title_el = await card.query_selector(SELECTORS["title"])
+        title = (await title_el.inner_text()).strip() if title_el else None
+
+        link_el = await card.query_selector(SELECTORS["listing_link"])
+        href = await link_el.get_attribute("href") if link_el else None
+        if href and href.startswith("/"):
+            href = "https://www.pakwheels.com" + href
+
+        if not title or not href:
+            return None  # not enough to identify this listing — skip
+
+        price_el = await card.query_selector(SELECTORS["price"])
+        price_raw = (await price_el.inner_text()).strip() if price_el else None
+
+        img_el = await card.query_selector(SELECTORS["image"])
+        image_url = await img_el.get_attribute("src") if img_el else None
+
+        info_items = await card.query_selector_all(SELECTORS["info_list"])
+        info_texts = [(await el.inner_text()).strip() for el in info_items]
+
+        year = None
+        mileage = None
+        fuel_type = None
+        transmission = None
+        city = None
+        engine_cc = None
+
+        for text in info_texts:
+            low = text.lower()
+            if year is None and re.search(r"^(19|20)\d{2}$", text):
+                year = parse_year(text)
+            elif "km" in low and mileage is None:
+                mileage = parse_mileage(text)
+            elif low in ("petrol", "diesel", "hybrid", "cng", "electric"):
+                fuel_type = text
+            elif low in ("automatic", "manual"):
+                transmission = text
+            elif "cc" in low and engine_cc is None:
+                engine_cc = parse_engine_cc(text)
+            elif city is None and text.replace(" ", "").isalpha():
+                city = text
+
+        make, model_name = guess_make_model(title)
+
+        return {
+            "title": title,
+            "make": make,
+            "model_name": model_name,
+            "price": parse_price(price_raw),
+            "year": year,
+            "mileage": mileage,
+            "engine_capacity": engine_cc,
+            "fuel_type": fuel_type,
+            "transmission": transmission,
+            "registration_city": city,
+            "province": resolve_province(city),
+            "listing_url": href,
+            "image_url": image_url,
+            "posted_date": None,
+        }
+    except Exception as exc:  # noqa: BLE001 — one bad card should never kill the run
+        logger.warning("Skipping a card due to parse error: %s", exc)
+        return None
+
+
+def upsert_car(session, data: dict):
+    existing = session.query(Car).filter_by(listing_url=data["listing_url"]).first()
+    if existing:
+        for key, value in data.items():
+            if value is not None:
+                setattr(existing, key, value)
+        existing.scraped_at = datetime.utcnow()
+    else:
+        session.add(Car(**data))
+    session.flush()
+
+
+async def run_scrape(max_listings: int = MAX_LISTINGS_DEFAULT, debug: bool = False, headless: bool = True):
     init_db()
-    total_inserted = 0
-    
-    with Session(engine) as session:
-        for page in range(1, pages + 1):
+    session = get_session()
+    saved = 0
+    skipped = 0
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            )
+        )
+        page = await context.new_page()
+        page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
+
+        logger.info("Navigating to %s", BASE_SEARCH_URL)
+        try:
+            await page.goto(BASE_SEARCH_URL, wait_until="domcontentloaded")
+        except PlaywrightTimeoutError:
+            logger.error("Navigation timed out — check your internet/DNS connection.")
+            await browser.close()
+            return {"saved": 0, "skipped": 0, "error": "navigation_timeout"}
+
+        await autoscroll(page, max_listings)
+
+        if debug:
+            html = await page.content()
+            with open("scraper/debug_dump.html", "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info("Saved rendered HTML to scraper/debug_dump.html for selector inspection.")
+
+        cards = await page.query_selector_all(SELECTORS["card"])
+        cards = cards[:max_listings]
+        logger.info("Extracting %d cards...", len(cards))
+
+        for card in cards:
+            data = await extract_card(card)
+            if data is None:
+                skipped += 1
+                continue
             try:
-                headers = {"User-Agent": random.choice(USER_AGENTS)}
-                response = requests.get(f"{BASE_URL}?page={page}", headers=headers, timeout=7)
-                if response.status_code != 200: continue
-                
-                soup = BeautifulSoup(response.text, "html.parser")
-                listings = soup.find_all("li", class_="classified-listing")
-                
-                for item in listings:
-                    try:
-                        title_elem = item.find("a", class_="car-name")
-                        if not title_elem: continue
-                        title = title_elem.get_text(strip=True)
-                        
-                        # Smart Dynamic Extraction of Manufacturing Year from Title
-                        year_match = re.search(r'\b(20\d{2})\b', title)
-                        parsed_year = int(year_match.group(1)) if year_match else 2018
-                        
-                        price_elem = item.find("div", class_="price-details")
-                        if not price_elem: continue
-                        price_str = price_elem.get_text(strip=True).lower().replace("pkr", "").replace(",","").strip()
-                        
-                        nums = re.findall(r"[-+]?\d*\.\d+|\d+", price_str)
-                        if not nums: continue
-                        val = float(nums[0])
-                        clean_price = int(val * 100000) if "lac" in price_str else (int(val * 10000000) if "crore" in price_str else int(val))
+                upsert_car(session, data)
+                saved += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("DB upsert failed for a listing: %s", exc)
+                skipped += 1
 
-                        # City & Province Allocation
-                        city_elem = item.find("ul", class_="search-vehicle-info-2")
-                        city = city_elem.find("li").get_text(strip=True) if city_elem else "Lahore"
-                        derived_province = determine_province(city)
-                        
-                        # Specs Extraction
-                        ver_elem = item.find("ul", class_="search-vehicle-info")
-                        transmission = "Automatic"
-                        mileage = 50000
-                        if ver_elem:
-                            lis = ver_elem.find_all("li")
-                            if len(lis) >= 2: mileage = int(re.sub(r'\D', '', lis[1].get_text())) if re.sub(r'\D', '', lis[1].get_text()) else 50000
-                            if len(lis) >= 3: transmission = "Manual" if "Manual" in lis[2].get_text() else "Automatic"
+            # gentle rate limiting so we don't hammer PakWheels
+            await asyncio.sleep(0.05)
 
-                        words = title.split()
-                        make = words[0] if len(words) > 0 else "Toyota"
-                        model = words[1] if len(words) > 1 else "Car"
-                        
-                        exists = session.query(Car).filter(Car.title == title, Car.price == clean_price).first()
-                        if exists: continue
-                        
-                        car_record = Car(
-                            title=title, make=make, model=model, price=clean_price,
-                            year=parsed_year, city=city, province=derived_province,
-                            mileage=mileage, transmission=transmission, engine_capacity="1300 cc",
-                            scraped_at=datetime.utcnow()
-                        )
-                        session.add(car_record)
-                        total_inserted += 1
-                    except: continue
-                session.commit()
-            except: continue
-        
-        # Enforce diversity array if live proxy connection skips raw rows
-        if total_inserted == 0:
-            total_inserted = generate_fail_safe_data(session)
-            
-    return total_inserted
+        session.commit()
+        session.close()
+        await browser.close()
+
+    logger.info("Scrape complete. Saved/updated: %d, Skipped: %d", saved, skipped)
+    return {"saved": saved, "skipped": skipped}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Scrape PakWheels used-car listings.")
+    parser.add_argument("--max", type=int, default=MAX_LISTINGS_DEFAULT, help="Max listings to scrape")
+    parser.add_argument("--debug", action="store_true", help="Dump rendered HTML for selector debugging")
+    parser.add_argument("--headed", action="store_true", help="Run browser with a visible window")
+    args = parser.parse_args()
+
+    asyncio.run(run_scrape(max_listings=args.max, debug=args.debug, headless=not args.headed))
+
+
+if __name__ == "__main__":
+    main()
