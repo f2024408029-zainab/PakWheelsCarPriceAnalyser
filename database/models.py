@@ -1,94 +1,70 @@
-import os
+
+
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'database', 'pakwheels.db')}"
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    UniqueConstraint,
+    Index,
+)
+from sqlalchemy.orm import declarative_base
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 class Car(Base):
     __tablename__ = "cars"
 
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    make = Column(String, nullable=False)        # e.g., Toyota
-    model = Column(String, nullable=False)       # e.g., Corolla
-    price = Column(Float, nullable=False)        # Saved as clean integer/float
-    year = Column(Integer, nullable=False)
-    city = Column(String, nullable=False)
-    province = Column(String, nullable=False)    # Punjab, Sindh, KPK, AJK, etc.
-    mileage = Column(Integer, nullable=False)     # in KM
-    transmission = Column(String, nullable=False) # Manual / Automatic
-    engine_capacity = Column(String, nullable=False) # e.g., 1300 cc
-    scraped_at = Column(DateTime, default=datetime.utcnow) # Track freshness of data
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
-def init_db():
-    """Creates tables if they don't exist without destroying data"""
-    Base.metadata.create_all(bind=engine)
+    # Core identity of the listing
+    title = Column(String(255), nullable=False)
+    make = Column(String(100), index=True)          # e.g. Toyota
+    model_name = Column(String(100), index=True)    # e.g. Corolla
 
-def get_filtered_cars(session, filters):
-    """
-    Query database dynamically based on user filters for the real-time webpage.
-    """
-    query = session.query(Car)
-    
-    if filters.get("province"):
-        query = query.filter(Car.province == filters["province"])
-    if filters.get("transmission"):
-        query = query.filter(Car.transmission == filters["transmission"])
-    if filters.get("year_from"):
-        query = query.filter(Car.year >= int(filters["year_from"]))
-    if filters.get("year_to"):
-        query = query.filter(Car.year <= int(filters["year_to"]))
-    if filters.get("price_min"):
-        query = query.filter(Car.price >= float(filters["price_min"]))
-    if filters.get("price_max"):
-        query = query.filter(Car.price <= float(filters["price_max"]))
-        
-    return query.order_by(Car.scraped_at.desc()).all()
+    # Numbers used for filtering / price analysis
+    price = Column(Float, index=True)                # PKR, normalized (e.g. 25.5 lac -> 2550000)
+    year = Column(Integer, index=True)
+    mileage = Column(Integer)                         # kilometers driven
+    engine_capacity = Column(Integer)                 # cc
 
-def evaluate_car_deal(session, make, model, year, user_price, mileage, transmission):
-    # Try getting exact make and model match
-    similar_cars = session.query(Car).filter(
-        Car.make.ilike(f"%{make}%"),
-        Car.model.ilike(f"%{model}%"),
-        Car.year == int(year)
-    ).all()
-    
-    # Intelligent Fallback: If no exact model found, check general 'Make' value for that year
-    is_fallback = False
-    if not similar_cars:
-        similar_cars = session.query(Car).filter(
-            Car.make.ilike(f"%{make}%"),
-            Car.year == int(year)
-        ).all()
-        is_fallback = True
-        
-    if not similar_cars:
-        return {"status": "Insufficient live market data for this vehicle group yet. Please click 'Scrape Live Data' to enrich the analytical engine!"}
-        
-    total_price = sum(car.price for car in similar_cars)
-    avg_price = total_price / len(similar_cars)
-    
-    price_diff = user_price - avg_price
-    percent_diff = (price_diff / avg_price) * 100
-    
-    if percent_diff < -6:
-        deal = "Great Deal! Price is notably lower than current market trends."
-    elif percent_diff > 6:
-        deal = "Overpriced! This asking amount is higher than general market velocity."
-    else:
-        deal = "Fair Valuation. This aligns cleanly with current live observations."
-        
-    if is_fallback:
-        deal = f"⚠️ Brand Trend Estimate: {deal}"
-        
-    return {
-        "market_average": int(avg_price),
-        "total_listings_compared": len(similar_cars),
-        "status": deal
-    }
+    # Categorical fields used as dropdown filters
+    fuel_type = Column(String(50))
+    transmission = Column(String(50), index=True)      # Manual / Automatic
+    registration_city = Column(String(100), index=True)
+    province = Column(String(100), index=True)
+
+    # Metadata
+    listing_url = Column(String(500), nullable=False)
+    image_url = Column(String(500))
+    posted_date = Column(String(100))                  # kept as raw text; PakWheels shows relative dates
+    scraped_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("listing_url", name="uq_car_listing_url"),
+        Index("ix_car_filters", "province", "registration_city", "transmission", "year"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "make": self.make,
+            "model_name": self.model_name,
+            "price": self.price,
+            "year": self.year,
+            "mileage": self.mileage,
+            "engine_capacity": self.engine_capacity,
+            "fuel_type": self.fuel_type,
+            "transmission": self.transmission,
+            "registration_city": self.registration_city,
+            "province": self.province,
+            "listing_url": self.listing_url,
+            "image_url": self.image_url,
+            "posted_date": self.posted_date,
+            "scraped_at": self.scraped_at.isoformat() if self.scraped_at else None,
+        }
